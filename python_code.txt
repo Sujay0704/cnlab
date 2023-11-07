@@ -1,0 +1,195 @@
+TCPS.PY
+
+import socket
+host = '127.0.0.1'
+port = 8085
+serv = socket.socket()
+serv.bind((host,port))
+serv.listen(3)
+print("Server is running...")
+conn, _ = serv.accept()
+data = conn.recv(1024).decode()
+filename = "output.txt"
+fo = open(filename, "w")
+fo.write(data)
+print("File received successfully")
+fo.close()
+
+
+TCPC.PY
+
+import socket
+host = '127.0.0.1'
+port = 8085
+cl = socket.socket()
+cl.connect((host,port))
+filename = input("Enter the filename to be shared: ")
+fi = open(filename, "r")
+data = fi.read()
+cl.send(data.encode())
+print("File sent successfully")
+fi.close()
+cl.close()
+
+
+
+HTTP_PERSISTENT_SERVER.PY
+
+
+import http.server
+
+class PersistentRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def handle_one_request(self):
+        super().handle_one_request()
+        self.close_connection = False  
+
+handler = PersistentRequestHandler
+server_address = ("0.0.0.0", 8000)
+httpd = http.server.HTTPServer(server_address, handler)
+
+print("HTTP server serving at port 8000")
+httpd.serve_forever()
+
+
+
+
+HTTP_PERSISTENT_CLIENT.PY
+
+
+import http.client
+
+conn = http.client.HTTPConnection("localhost", 8000)
+
+for _ in range(3):
+    conn.request("GET", "/")  
+    response = conn.getresponse()
+    data = response.read()
+    print(data.decode("utf-8"))
+
+conn.close()
+
+
+
+
+GOBACK_SENDER.PY
+
+
+import socket
+import random
+server_address = ('localhost', 4345)
+receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+receiver_socket.bind(server_address)
+while True:
+    data, client_address = receiver_socket.recvfrom(1024)
+    packet = data.decode()
+    packet_number = int(packet.split()[1])
+    if random.random() < 0.2:
+        print(f"Received: {packet}, Acknowledgment not sent for packet {packet_number}")
+    else:
+        receiver_socket.sendto(str(packet_number).encode(), client_address)
+        print(f"Received: {packet}, Sent ACK: {packet_number}")
+receiver_socket.close()
+
+
+GOBACK_RECEIVER.PY
+
+import socket
+import time
+server_address = ('localhost', 4345)
+window_size = 4
+sender_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+packets = ["Packet " + str(i) for i in range(10)]
+next_seq_num = 0
+base=0
+while base<10:
+    for i in range(next_seq_num, min(next_seq_num + window_size, len(packets))):
+        sender_socket.sendto(packets[i].encode(), server_address)
+        print(f"Sent: {packets[i]}")
+        time.sleep(1)
+    sender_socket.settimeout(2)
+    for j in range(window_size):
+        try:
+            ack, _ = sender_socket.recvfrom(1024)
+            ack_num = int(ack.decode())
+            print(f"Received ACK: {ack_num}")
+            if next_seq_num == ack_num:
+                next_seq_num+=1
+        except socket.timeout:
+            print("Timeout: No ACK received. Resending window.")
+            break
+    base=next_seq_num
+sender_socket.close()
+
+
+
+SR_SENDER.PY
+
+
+import socket
+import random
+server_address = ('localhost', 4445)
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server_socket.bind(server_address)
+window_size = 4
+expected_sequence_number = 0
+buffer={}
+while True:
+    data, client_address = server_socket.recvfrom(1024)
+    packet_number = int(data.decode())
+    if packet_number in buffer or packet_number < expected_sequence_number:
+        print(f"Received a duplicate packet {packet_number}, Discarding")
+    else:
+        if random.random() < 0.2:
+            print(f"Received: {packet_number}, Acknowledgment not sent for packet {packet_number}")
+        else:
+            buffer[packet_number] = packet_number
+            print(f"Sending ACK for {packet_number}")
+            server_socket.sendto(str(packet_number).encode(),client_address)
+            while expected_sequence_number in buffer:
+                expected_sequence_number+=1
+server_socket.close()
+
+
+
+
+
+SR_RECEIVER.PY
+
+
+
+import socket
+import time
+sender_socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+server_address = ('localhost',4445)
+sequence_numbers = list(range(20))
+packets = [str(i) for i in sequence_numbers]
+base = 0
+window_size =4
+next_seq_num = 0
+count=0
+buffer = [False] * len(packets)
+while base < len(packets):
+    count=0
+    for i in range (next_seq_num,min(next_seq_num+window_size,len(packets))):
+        if not buffer[i]:
+            count+=1
+            sender_socket.sendto(packets[i].encode(), server_address)
+            print(f"Sent: {packets[i]}")
+    sender_socket.settimeout(2)
+    for j in range(count):
+        try:
+            ack, _ = sender_socket.recvfrom(1024)
+            ack_num = int(ack.decode())
+            print(f"Received ACK: {ack_num}")
+            buffer[ack_num] = True
+            while buffer[next_seq_num]:
+                next_seq_num+=1
+        except socket.timeout:
+            print("Timeout: No ACK received. Resending unacknowledged packets in the window.")
+    if count==0:
+        next_seq_num+=window_size
+        base=next_seq_num
+sender_socket.close()
+
+
+
