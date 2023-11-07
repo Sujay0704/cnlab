@@ -1,0 +1,923 @@
+shalini tcp/ftp:
+client.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+
+#define PORT 6820031
+#define MAXSIZE 1024
+
+int main() {
+    int client_socket, status;
+    char buffer[MAXSIZE] = {0};
+
+    if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) <= 0) {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_port = htons(PORT);
+    address.sin_addr.s_addr=INADDR_ANY;
+    if (inet_pton(AF_INET, "127.0.0.1", &(address.sin_addr)) <= 0) {
+        printf("INVALID ADDRESS\n");
+        return -1;
+    }
+
+    if ((status = connect(client_socket, (struct sockaddr*)&address, sizeof(address))) < 0) {
+        perror("unable to connect");
+        exit(EXIT_FAILURE);
+    }
+
+    FILE *fd = fopen("tosendimg.png", "rb");
+    if (fd == NULL) {
+        printf("COULD NOT OPEN FILE\n");
+        return -1;
+    }
+
+    int n;
+    while ((n = fread(buffer, sizeof(char), MAXSIZE, fd)) > 0) {
+        send(client_socket, buffer, n, 0);
+    }
+
+    fclose(fd);
+    close(client_socket);
+
+    return 0;
+}
+client.c
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <unistd.h>
+
+#define PORT 6820031
+#define MAXSIZE 1024
+
+int main() {
+    int client_socket, server_socket;
+    if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) <= 0) {
+        perror("SOCKET CREATION FAILED");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    if (bind(server_socket, (struct sockaddr*)&address, addrlen) < 0) {
+        perror("BINDING FAILED");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_socket, 5) < 0) {
+        perror("LISTENING FAILED");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("server listening..\n");
+
+    while (1) {
+        client_socket = accept(server_socket, (struct sockaddr*)&address, (socklen_t*)&addrlen);
+        if (client_socket < 0) {
+            perror("CONNECTION FAILED");
+            exit(EXIT_FAILURE);
+        }
+
+        FILE *fd = fopen("recvdimg.png", "wb");
+        if (fd == NULL) {
+            perror("FILE COULD NOT BE OPENED");
+            exit(EXIT_FAILURE);
+        }
+
+        int n;
+        char buffer[MAXSIZE] = {0};
+
+        while ((n = recv(client_socket, buffer, MAXSIZE, 0)) > 0) {
+            fwrite(buffer, sizeof(char), n, fd);
+        }
+
+        if (n < 0) {
+            perror("ERROR READING FROM SOCKET");
+        }
+
+        fclose(fd);
+        close(client_socket);  // Close the client socket inside the loop
+    }
+
+    close(server_socket);  // Close the server socket outside the loop
+
+    return 0;
+}
+
+udp:
+server.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#define PORT 121102
+#define MAXSIZE 1024
+int main(){
+      int server_socket;
+      if((server_socket=socket(AF_INET,SOCK_DGRAM,0))<=0){
+        perror("socket creation failed\n");
+        exit(EXIT_FAILURE);
+      }
+      struct sockaddr_in address;
+      address.sin_family=AF_INET;
+      address.sin_port=htons(PORT);
+      if(inet_pton(AF_INET,"127.0.0.1",&address.sin_addr)<=0){         perror("invalid ip\n");
+         exit(EXIT_FAILURE);
+      }    
+      if(bind(server_socket,(struct sockaddr*)&address,sizeof(address))<=0){
+           printf("binding failed\n");
+           return -1;
+      }
+      printf("connected\n");
+      while(1){
+        char buffer[1024]={0};
+        char buffer2[1024]={0};
+        printf("server:");
+        fgets(buffer,MAXSIZE,stdin);
+        sendto(server_socket,buffer,MAXSIZE,0,(struct sockaddr*)&address,sizeof(address));        
+        recvfrom(server_socket,buffer2,MAXSIZE,0,NULL,NULL);
+        if(strcmp(buffer2,"exit")==0){
+           break;
+        }
+        printf("client message: %s\n",buffer2);
+     }
+     close(server_socket);
+     return 0;
+}
+
+client.c
+#include <stdio.h>                                                                                              
+#include <stdlib.h>                                                                                             
+#include <string.h>                                                                                             
+#include <unistd.h>                                                                                             
+#include <arpa/inet.h>                                                                                          
+                                                                                                                
+#define PORT 12345                                                                                              
+#define BUFFER_SIZE 1024                                                                                        
+                                                                                                                
+int main() {                                                                                                    
+    int sockfd;                                                                                                 
+    struct sockaddr_in servaddr;                                                                                
+    char buffer[BUFFER_SIZE];                                                                                   
+
+    // Create socket                                                                                            
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {                                                        
+        perror("socket creation failed");                                                                       
+        exit(EXIT_FAILURE);                                                                                     
+    }                                                                                                           
+
+    memset(&servaddr, 0, sizeof(servaddr));                                                                     
+
+    // Server information                                                                                       
+    servaddr.sin_family = AF_INET;                                                                              
+    servaddr.sin_port = htons(PORT);                                                                            
+
+    // Convert IP address from text to binary form                                                              
+    if (inet_pton(AF_INET, "127.0.0.1", &servaddr.sin_addr) <= 0) {                                             
+        perror("Invalid address/Address not supported");                                                        
+        exit(EXIT_FAILURE);                                                                                     
+    }                                                                                                           
+
+    printf("Connected to the server\n");                                                                        
+
+    int n, len;                                                                                                 
+
+    while (1) {                                                                                                 
+        printf("You: ");                                                                                        
+        fgets(buffer, BUFFER_SIZE, stdin);                                                                      
+
+        // Send message to the server                                                                           
+        sendto(sockfd, buffer, strlen(buffer), 0, (const struct sockaddr *)&servaddr, sizeof(servaddr));        
+
+        // Receive response from the server                                                                     
+        n = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, NULL, NULL);                                               
+        buffer[n] = '\0';                                                                                       
+        printf("Server: %s", buffer);                                                                           
+    }                                                                                                           
+
+    close(sockfd);                                                                                              
+
+    return 0;                                                                                                   
+}
+
+
+ftp:
+
+client:
+#include<iostream>
+#include<fstream>
+#include<stdio.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <stdlib.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+using namespace std;
+
+class Client_socket{
+        fstream file;
+
+        int PORT;
+
+        int general_socket_descriptor;
+
+        struct sockaddr_in address;
+        int address_length;
+
+        public:
+        Client_socket(){
+                create_socket();
+                PORT = 5643;
+
+                address.sin_family = AF_INET;
+                address.sin_port = htons( PORT );
+                address_length = sizeof(address);
+                if(inet_pton(AF_INET, "127.0.0.1", &address.sin_addr)<=0) {
+                        cout<<"[ERROR] : Invalid address\n";
+                }
+
+                create_connection();
+
+                file.open("server.txt", ios::in | ios::binary);
+                if(file.is_open()){
+                        cout<<"[LOG] : File is ready to transmit.\n";
+                }
+                else{
+                        cout<<"[ERROR] : File loading failed, Exititng.\n";
+                        exit(EXIT_FAILURE);
+                }
+        }
+
+        void create_socket(){
+                if ((general_socket_descriptor = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+                        perror("[ERROR] : Socket failed.\n");
+                        exit(EXIT_FAILURE);
+                }
+                cout<<"[LOG] : Socket Created Successfully.\n";
+        }
+
+        void create_connection(){
+                if (connect(general_socket_descriptor, (struct sockaddr *)&address, sizeof(address)) < 0) {
+                        perror("[ERROR] : connection attempt failed.\n");
+                        exit(EXIT_FAILURE);
+                }
+                cout<<"[LOG] : Connection Successfull.\n";
+        }
+        void transmit_file(){
+                std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+                cout<<"[LOG] : Transmission Data Size "<<contents.length()<<" Bytes.\n";
+
+                cout<<"[LOG] : Sending...\n";
+
+                int bytes_sent = send(general_socket_descriptor , contents.c_str() , contents.length() , 0 );
+                cout<<"[LOG] : Transmitted Data Size "<<bytes_sent<<" Bytes.\n";
+
+                cout<<"[LOG] : File Transfer Complete.\n";
+                file.close();
+        }
+
+        void receive_file(){
+                file.open("server.txt", ios::out | ios::trunc | ios::binary);
+                if(file.is_open()){
+                        cout<<"[LOG] : File created.\n";
+                }
+                else{
+                        cout<<"[ERROR] : File creation failed, Exititng.\n";
+                        exit(EXIT_FAILURE);
+                }
+                char buffer[1024] = {};
+                int valread = read(general_socket_descriptor , buffer, 1024);
+                cout<<"[LOG] : Data received "<<valread<<" bytes\n";
+                cout<<"[LOG] : Saving data to file.\n";
+
+                file<<buffer;
+                cout<<"[LOG] : File Saved.\n";
+        }
+};
+
+int main(){
+        Client_socket C;
+        C.transmit_file();
+        C.receive_file();
+
+        return 0;
+}
+
+server:
+
+#include<iostream>
+#include<fstream>
+#include<stdio.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <stdlib.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <map>
+#include <string>
+using namespace std;
+
+class Server_socket{
+        fstream file;
+
+        int PORT;
+
+        int general_socket_descriptor;
+        int new_socket_descriptor;
+
+        struct sockaddr_in address;
+        int address_length;
+
+        public:
+        Server_socket(){
+                create_socket();
+                PORT = 5643;
+
+                address.sin_family = AF_INET;
+                address.sin_addr.s_addr = INADDR_ANY;
+                address.sin_port = htons( PORT );
+                address_length = sizeof(address);
+
+                bind_socket();
+                set_listen_set();
+                accept_connection();
+
+                file.open("client.txt", ios::out | ios::trunc | ios::binary);
+                if(file.is_open()){
+                        cout<<"[LOG] : File created.\n";
+                }
+                else{
+                        cout<<"[ERROR] : File creation failed, Exititng.\n";
+                        exit(EXIT_FAILURE);
+                }
+        }
+
+        void create_socket(){
+                if ((general_socket_descriptor = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+                        perror("[ERROR] : Socket failed");
+                        exit(EXIT_FAILURE);
+                }
+                cout<<"[LOG] : Socket Created Successfully.\n";
+        }
+
+        void bind_socket(){
+                if (bind(general_socket_descriptor, (struct sockaddr *)&address, sizeof(address))<0) {
+                        perror("[ERROR] : Bind failed");
+                        exit(EXIT_FAILURE);
+                }
+                cout<<"[LOG] : Bind Successful.\n";
+        }
+
+        void set_listen_set(){
+                if (listen(general_socket_descriptor, 3) < 0) {
+                        perror("[ERROR] : Listen");
+                        exit(EXIT_FAILURE);
+                }
+                cout<<"[LOG] : Socket in Listen State (Max Connection Queue: 3)\n";
+        }
+
+        void accept_connection(){
+                if ((new_socket_descriptor = accept(general_socket_descriptor, (struct sockaddr *)&address, (socklen_t *)&address_length))<0) {
+                        perror("[ERROR] : Accept");
+                        exit(EXIT_FAILURE);
+                }
+                cout<<"[LOG] : Connected to Client.\n";
+        }
+        void receive_file(){
+                char buffer[1024] = {};
+                int valread = read(new_socket_descriptor , buffer, 1024);
+                cout<<"[LOG] : Data received "<<valread<<" bytes\n";
+                cout<<"[LOG] : Saving data to file.\n";
+                map <string,int> m;
+                char c;
+                string res="";
+                string ans="";
+                int count=0;
+                for(auto c:buffer)
+                {
+                        if(c=='\n')
+                        {
+                                count++;
+                                m[res]++;
+                                ans=ans+res+c;
+                                res="";
+                                break;
+                        }
+                        else if(c==' ')
+                        {
+                                count++;
+                                m[res]++;
+                                ans=ans+res+c;
+                                res="";
+
+                        }
+                        else if(c>='a' && c<='z')
+                        {
+                                c=toupper(c);
+                                res=res+c;
+                        }
+                        else if(c>='A' && c<='Z')
+                        {
+                                c=tolower(c);
+                                res=res+c;
+                        }
+                }
+                ans=ans+"total words:"+to_string(count);
+                for(auto c:m)
+                {
+                        ans=ans+c.first+"="+to_string(c.second)+"\n";
+                }
+                cout<<ans;
+
+
+                file<<ans;
+                file.close();
+                cout<<"[LOG] : File Saved.\n";
+        }
+
+        void transmit_file(){
+                file.open("client.txt", ios::in | ios::binary);
+                if(file.is_open()){
+                        cout<<"[LOG] : File is ready to transmit.\n";
+                }
+                else{
+                        cout<<"[ERROR] : File loading failed, Exititng.\n";
+                        exit(EXIT_FAILURE);
+                }
+                std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+                cout<<"[LOG] : Transmission Data Size "<<contents.length()<<" Bytes.\n";
+
+                cout<<"[LOG] : Sending...\n";
+
+                int bytes_sent = send(new_socket_descriptor , contents.c_str() , contents.length() , 0 );
+                cout<<"[LOG] : Transmitted Data Size "<<bytes_sent<<" Bytes.\n";
+
+                cout<<"[LOG] : File Transfer Complete.\n";
+        }
+};
+
+int main(){
+        Server_socket S;
+        S.receive_file();
+        S.transmit_file();
+        return 0;
+}
+
+HTTP:
+
+stud.c
+#include<stdio.h>
+#define SIZE 300
+#define SEM 3
+#define N 2
+
+typedef struct{
+        int regno;
+        int age;
+        int sem;
+        int marks[5];
+        char name[SIZE];
+        char gender;
+}student;
+
+int main(){
+        student s[N];
+        FILE *of;
+        of = fopen("stud.bin", "wb");
+        for (int i = 0; i < N; i++){
+                printf("Enter Regno, Name, Age, Gender\n");
+                scanf("%d", &s[i].regno);
+                getchar();
+                scanf("%[^\n]%*c", s[i].name);
+                scanf("%d", &s[i].age);
+                getchar();
+                scanf("%c", &s[i].gender);
+                for (int k = 0; k < SEM; k++){
+                        s[i].sem = k + 1;
+                        printf("Enter marks for sem %d, 5 subjects: ", k +1);
+                        for (int j = 0; j < 5; j++)
+                                scanf("%d", &s[i].marks[j]);
+                        fwrite (&s[i], sizeof(student), 1, of);
+                }
+        }
+        fclose(of);
+        student stu;
+        FILE *inf;
+        inf = fopen("stud.bin", "rb");
+        while(fread(&stu, sizeof(student), 1, inf)){
+                printf("Regno: %d\nName: %s\nAge: %d\nGender: %c\nSem:%d\nMarks: ",stu.regno, stu.name, stu.age, stu.gender,stu.sem);
+                for (int j = 0; j < 5; j++)
+                        printf("%d ", stu.marks[j]);
+                printf("\n");
+        }
+        fclose(inf);
+        return 0;
+}
+
+myheader.h
+
+#include <stdio.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <time.h>
+
+#define PORT 3423
+#define SIZE 300
+#define N 20
+typedef struct{
+        int regno;
+        int age;
+        int sem;
+        int marks[5];
+        char name[SIZE];
+        char gender;
+}student;
+
+typedef struct{
+        char method[N];
+        char path[N];
+        char version[N];
+        char accept[N];
+        char connection[N];
+        char useragent[N];
+        student stu;
+}request;
+
+typedef struct{
+        int status;
+        char statmsg[N];
+        char version[N];
+        char connection[N];
+        char contype[N];
+        char datetime[N];
+        student stu;
+}response;
+
+client.c
+
+#include "myheader.h"
+#include <time.h>
+
+int main(int argc, char *argv[]){
+
+        request cr;
+        strcpy(cr.method, "GET");
+        strcpy(cr.path, "/");
+        strcpy(cr.version, "http/1.1");
+        strcpy(cr.connection, "keep-alive");
+        strcpy(cr.accept, "text");
+
+        struct sockaddr_in cliaddr;
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        cliaddr.sin_family = AF_INET;
+        cliaddr.sin_port = htons(PORT);
+        cliaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+        if (connect(sockfd, (struct sockaddr *) &cliaddr, sizeof(cliaddr))
+                        < 0) return 0;
+        printf("Connection made with the server.\n");
+
+
+        printf("Enter useragent: ");
+        scanf("%s", cr.useragent);
+        printf("Enter RegNo of the student: ");
+        scanf("%d", &cr.stu.regno);
+
+        while(1){
+                printf("Enter semester [-1 to exit]: ");
+                scanf("%d", &cr.stu.sem);
+                 clock_t tStart = clock();
+                send(sockfd, &cr, sizeof(cr), 0);
+
+                if (cr.stu.sem == -1) break;
+
+                response sr;
+                int len = recv(sockfd, &sr, sizeof(sr), 0);
+                double t=(double)(clock() - tStart) / CLOCKS_PER_SEC;
+                printf("Time taken (in seconds) : %f\n", t);
+                if (len > 0){
+                        printf("SERVER'S RESPONSE: \n%s\n%d%s\nConnection: %s\nContent-Type: %s\n\n", sr.version, sr.status,sr.statmsg, sr.connection, sr.contype);
+                        if (sr.status == 404){
+                                printf("Marksheet not found.\n");
+                        }
+                        else{
+                                printf(" MARKSHEET\n");
+                                printf("|-----------------------------|\n");
+                                printf("|REGNO: NAME:\t AGE: GENDER:|\n");
+                                printf("|%d %s\t %d %c |\n",sr.stu.regno, sr.stu.name, sr.stu.age, sr.stu.gender);
+                                printf("|-----------------------------|\n");
+                                printf("|SEM: %d\tMARKS: ", sr.stu.sem);
+                                for (int j = 0; j < 5; j++){
+                                        printf("%d ", sr.stu.marks[j]);
+                                }
+                                printf("|\n|-----------------------------|\n");
+                        }
+                }
+        }
+        close(sockfd);
+        printf("Disconnected from the server.\n");
+
+        return 0;
+}
+
+server.c
+
+#include "myheader.h"
+#include <time.h>
+
+int main(int argc, char *argv[]){
+        response sr;
+        strcpy(sr.version, "http/1.1");
+        strcpy(sr.connection, "keep-alive");
+        strcpy(sr.contype, "text");
+        struct sockaddr_in serveraddr;
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        serveraddr.sin_family = AF_INET;
+        serveraddr.sin_port = htons(PORT);
+        serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+        if (bind(sockfd, (struct sockaddr *) &serveraddr,sizeof(serveraddr)) < 0) return 0;
+        if (listen(sockfd, 2) < 0) return 0;
+        printf("Server listening on port: %d\n", PORT);
+
+        int clisock = accept(sockfd, NULL, NULL);
+        if (clisock < 0) return 0;
+
+        while(1){
+                request clr;
+                clock_t tStart = clock();
+                int len = recv(clisock, &clr, sizeof(clr), 0);
+                printf("CLIENT'S REQUEST:\n%s%s%s\nConnection: %s\nAccept:%s\nUser-Agent: %s\nRegno: %d\nRequired sem: %d\n\n",clr.method, clr.path, clr.version,clr.connection, clr.accept, clr.useragent, clr.stu.regno, clr.stu.sem);
+                if (clr.stu.sem == -1) break;
+
+                FILE *inf;
+                inf = fopen("stud.bin", "rb");
+                student s;
+                int found = 0;
+                while(fread(&s, sizeof(student), 1, inf) == 1){
+                        if (s.regno == clr.stu.regno && s.sem ==clr.stu.sem) {
+                                found = 1;
+                                sr.stu = s;
+                                strcpy(sr.statmsg, "OK");
+                                sr.status = 200;
+                                break;
+                        }
+                } if (!found){
+                        sr.stu.regno = -1;
+                        sr.stu.sem = -1;
+                        strcpy(sr.statmsg, "Not found");
+                        sr.status = 404;
+                }
+                fclose(inf);
+
+                 send(clisock, &sr, sizeof(sr), 0);
+                  double t=(double)(clock() - tStart) / CLOCKS_PER_SEC;
+                printf("Time taken (in seconds) : %f\n", t);
+        }
+        close(sockfd);
+        return 0;
+}
+
+
+flow control
+
+stop and wait
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#define timeout 3
+void send_packet(int packet){
+   printf("Sending packet %d...\n",packet);
+   sleep(1);
+}
+int recieve_ack(){
+    int ack;
+    printf("Waiting for acknowledgement...\n");
+    sleep(1);
+    ack=rand()%2;
+    return ack;
+}
+int main(){
+     int frames;
+     printf("Enter number of frames:");
+     scanf("%d",&frames);
+     int framesarr[frames];
+     for(int i=0;i<frames;i++){
+         framesarr[i]=i+1;
+     }
+     int sent=0;
+     while(sent<frames){
+         send_packet(framesarr[sent]);
+         int time=0;
+         while(time<timeout){
+         int ack=recieve_ack();
+         if(ack==1){
+            printf("ACK RECIEVED...\n");
+            sent++;
+            break;
+         }
+         else{
+            time++;
+         }
+         }
+         if(time>=timeout){
+             printf("TIMEOUT...RETRANSMITTING\n");
+         }
+    }
+    return 0;
+}
+
+
+gobackN
+
+#include<iostream>                                                                                              
+#include<time.h>                                                                                                
+#include<cstdlib>                                                                                               
+#include<ctime>                                                                                                 
+#include<unistd.h>                                                                                              
+using namespace std;                                                                                            
+class timer {                                                                                                   
+        private:                                                                                                
+                unsigned long begTime;                                                                          
+        public:                                                                                                 
+                void start(){                                                                                   
+                        begTime=clock();                                                                        
+                }                                                                                               
+                unsigned long elapsedTime() {                                                                   
+                        return ((unsigned long)clock()-begTime)/CLOCKS_PER_SEC;                                 
+                }                                                                                               
+                bool isTimeout(unsigned long seconds) {                                                         
+                        return seconds>=elapsedTime();                                                          
+                }                                                                                               
+};                                                                                                              
+int main()                                                                                                      
+{                                                                                                               
+        int frames[]={1,2,3,4,5,6,7,8,9};                                                                       
+        unsigned long seconds=5;                                                                                
+        srand(time(NULL));                                                                                      
+        timer t;                                                                                                
+        cout<<"Sender has to send frames:";                                                                     
+        for (int i=0;i<9;i++)                                                                                   
+                cout<<frames[i]<<" ";                                                                           
+        cout<<endl;                                                                                             
+        int count=0;                                                                                            
+        bool delay=false;                                                                                       
+        int windowsize=3;                                                                                       
+        bool timeout;                                                                                           
+        do                                                                                                      
+        {                                                                                                       
+                int fsent=0;                                                                                    
+                while (fsent==0)                                                                                
+                {                                                                                               
+                        timeout=false;                                                                          
+                        for (int i=0;i<windowsize;i++)                                                          
+                        {                                                                                       
+                                if (timeout==true)                                                              
+                                {                                                                               
+                                        cout<<"Frame "<<frames[count+i]<< " discarded"<<endl;                   
+                                }                                                                               
+                                else if (count+i<9)                                                             
+                                {                                                                               
+                                        cout<<"Sending frame: "<<frames[count+i];                               
+                                        cout.flush();                                                           
+                                        cout<<"\t";                                                             
+                                        t.start();                                                              
+                                        if (rand()%2)                                                           
+                                        {                                                                       
+                                                int to=24600+rand()%(64000-24600) +1;                           
+                                                for (int i=0;i<64000;i++)                                       
+                                                        for(int j=0;j<to;j++) {}
+                                        }                                                                       
+                                        if (t.elapsedTime()>=seconds){                                          
+                                                cout<<"--Timeout--"<<"\t";                                      
+                                                //cout<<endl;                                                   
+                                                timeout=true;                                                   
+                                                fsent=0;                                                        
+                                        }                                                                       
+                                        else if (!timeout)                                                      
+                                                fsent++;                                                        
+                                }                                                                               
+                        }                                                                                       
+                        if (timeout==false)                                                                     
+                        {                                                                                       
+                                for (int i=0;i<windowsize;i++)                                                  
+                                {                                                                               
+                                        cout<<"Received frame:"<<frames[count+i]<<"\t";                         
+                                }                                                                               
+                                cout<<endl;                                                                     
+                                fsent+=3;                                                                       
+                                count+=3;                                                                       
+                        }                                                                                       
+                                                                                                                
+                                                                                                                
+                }                                                                                               
+                cout.flush();                                                                                   
+
+        }while(count!=9);                                                                                       
+        return 0;                                                                                               
+}
+
+#include<iostream>                                                                                              
+#include<time.h>                                                                                                
+#include<cstdlib>                                                                                               
+#include<ctime>                                                                                                 
+#include<unistd.h>                                                                                              
+using namespace std;                                                                                            
+class timer {                                                                                                   
+        private:                                                                                                
+                unsigned long begTime;                                                                          
+        public:                                                                                                 
+                void start(){                                                                                   
+                        begTime=clock();                                                                        
+                }                                                                                               
+                unsigned long elapsedTime() {                                                                   
+                        return ((unsigned long)clock()-begTime)/CLOCKS_PER_SEC;                                 
+                }                                                                                               
+                bool isTimeout(unsigned long seconds) {                                                         
+                        return seconds>=elapsedTime();                                                          
+                }                                                                                               
+};                                                                                                              
+int main()                                                                                                      
+{                                                                                                               
+        int frames[]={1,2,3,4,5,6,7,8,9,10};                                                                    
+        unsigned long seconds=5;                                                                                
+        srand(time(NULL));                                                                                      
+        timer t;                                                                                                
+        cout<<"Sender has to send frames:";                                                                     
+        for (int i=0;i<10;i++)                                                                                  
+                cout<<frames[i]<<" ";                                                                           
+        cout<<endl;                                                                                             
+        int count=0;                                                                                            
+        bool delay=false;                                                                                       
+        cout<<endl<<"Sender\t\t\t\tReceiver"<<endl;                                                             
+        do                                                                                                      
+        {                                                                                                       
+                bool timeout=false;                                                                             
+                cout<<"Sending Frame: "<<frames[count];                                                         
+                cout.flush();                                                                                   
+                cout<<"\t\t";                                                                                   
+                t.start();                                                                                      
+                if (rand()%2)                                                                                   
+                {                                                                                               
+                        int to=24600+rand()%(64000-24600) +1;                                                   
+                        for (int i=0;i<64000;i++)                                                               
+                                for(int j=0;j<to;j++) {}                                                        
+                }                                                                                               
+                if (t.elapsedTime()<=seconds)                                                                   
+                {                                                                                               
+                        cout<<"Received Frame: "<<frames[count]<<" ";                                           
+                        if (delay)                                                                              
+                        {                                                                                       
+                                cout<<"Duplicate";                                                              
+                                delay=false;                                                                    
+                        }                                                                                       
+                        cout<<endl;                                                                             
+                        count++;
+                }                                                                                               
+                else                                                                                            
+                {                                                                                               
+                        cout<<"---"<<endl;                                                                      
+                        cout<<"Timeout"<<endl;                                                                  
+                        timeout=true;                                                                           
+                }                                                                                               
+                t.start();                                                                                      
+                if (rand()%2 || !timeout)                                                                       
+                {                                                                                               
+                        int to=24600+rand()%(64000-24600)+1;                                                    
+                        for (int i=0;i<64000;i++)                                                               
+                                for (int j=0;j<to;j++) {}                                                       
+                        if (t.elapsedTime()>seconds)                                                            
+                        {                                                                                       
+                                cout<<"Delayed Ack"<<endl;                                                      
+                                count--;                                                                        
+                                delay=true;                                                                     
+                        }                                                                                       
+                        else if (!timeout)                                                                      
+                                cout<<"Acknowledgement: "<<frame[count]-1<<endl;                                
+                }                                                                                               
+        }while(count!=10);                                                                                      
+        return 0;                                                                                               
+}
+
